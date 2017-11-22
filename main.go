@@ -204,6 +204,7 @@ func visit(url *url.URL) {
 
 	var t0, t1, t2, t3, t4 time.Time
 
+	// 1.create a ClientTrace
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(_ httptrace.DNSStartInfo) { t0 = time.Now() },
 		DNSDone:  func(_ httptrace.DNSDoneInfo) { t1 = time.Now() },
@@ -224,8 +225,9 @@ func visit(url *url.URL) {
 		GotConn:              func(_ httptrace.GotConnInfo) { t3 = time.Now() },
 		GotFirstResponseByte: func() { t4 = time.Now() },
 	}
+	// 2. wrap Request with trace
 	req = req.WithContext(httptrace.WithClientTrace(context.Background(), trace))
-
+	// 3. create a Transport instance
 	tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConns:          100,
@@ -241,6 +243,7 @@ func visit(url *url.URL) {
 			host = req.Host
 		}
 
+		// 4.create a TLSClientConfig on to Transport instance
 		tr.TLSClientConfig = &tls.Config{
 			ServerName:         host,
 			InsecureSkipVerify: insecure,
@@ -249,12 +252,14 @@ func visit(url *url.URL) {
 
 		// Because we create a custom TLSClientConfig, we have to opt-in to HTTP/2.
 		// See https://github.com/golang/go/issues/14275
+		// 5. config Transport
 		err = http2.ConfigureTransport(tr)
 		if err != nil {
 			log.Fatalf("failed to prepare transport for HTTP/2: %v", err)
 		}
 	}
 
+	// 6. create a new http.Client with customized Transport instance
 	client := &http.Client{
 		Transport: tr,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -264,6 +269,7 @@ func visit(url *url.URL) {
 		},
 	}
 
+	// do the acutual request
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatalf("failed to read response: %v", err)
@@ -337,7 +343,7 @@ func visit(url *url.URL) {
 		)
 	}
 
-	if followRedirects && isRedirect(resp) {
+	if followRedirects && isRedirect(resp) { // deal with redirects
 		loc, err := resp.Location()
 		if err != nil {
 			if err == http.ErrNoLocation {
@@ -367,7 +373,7 @@ func newRequest(method string, url *url.URL, body string) *http.Request {
 	}
 	for _, h := range httpHeaders {
 		k, v := headerKeyValue(h)
-		if strings.EqualFold(k, "host") {
+		if strings.EqualFold(k, "host") { // :note, test equality with case insensitive
 			req.Host = v
 			continue
 		}
@@ -429,7 +435,7 @@ func readResponseBody(req *http.Request, resp *http.Response) string {
 			// try to get the filename from the Content-Disposition header
 			// otherwise fall back to the RequestURI
 			if filename = getFilenameFromHeaders(resp.Header); filename == "" {
-				filename = path.Base(req.URL.RequestURI())
+				filename = path.Base(req.URL.RequestURI()) // :note, last element of path
 			}
 
 			if filename == "/" {
